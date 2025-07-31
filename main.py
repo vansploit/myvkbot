@@ -1,27 +1,13 @@
-import vk_api
-from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
+import asyncio
 
 from config import TOKEN, GROUP_ID
-from handlers import distributor
-
+from addons.dispatcher import VkBotDispatcher
 
 def main():
+    dispatcher = VkBotDispatcher(group_id=GROUP_ID, token=TOKEN)
+    dispatcher.include_routers_from_folder("handlers")
 
-    try:
-        vk_session = vk_api.VkApi(token=TOKEN)
-        vk = vk_session.get_api()
-    except vk_api.AuthError as error_msg:
-        print(error_msg)
-        return
-
-    # Если используете LongPoll (для бота)
-    longpoll = VkBotLongPoll(vk_session, GROUP_ID)
-    
-    for event in longpoll.listen():
-        print(event.type)
-        if event.type == VkBotEventType.MESSAGE_NEW:
-            distributor.Message(vk, event.message)
-            
+    asyncio.run(dispatcher.start_polling())
 
 if __name__ == '__main__':
     main()

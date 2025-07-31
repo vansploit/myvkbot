@@ -4,4 +4,4 @@ __pycache__/
 *.pyo
 .pytest_cache/
 config.py
-bot_data.db
+user_db.db
