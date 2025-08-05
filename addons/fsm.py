@@ -26,4 +26,4 @@ class FSM:
             if with_data:
                 del self.storage[user_id]
             else:
-                self.storage[user_id]['state'] = None
+                self.storage[user_id]['state'] = "."

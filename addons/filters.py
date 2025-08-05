@@ -1,6 +1,6 @@
 import re
 import json
-from typing import Optional, List
+from typing import Optional, Union, List
 from .message import VkMessage
 
 from config import ADMIN
@@ -38,50 +38,24 @@ class Command(Filter):
     def __init__(self, command: str):
         self.command = command.lower()
 
-    def has_arguments(self, command):
-        # Удаляем все пробелы и табы в начале и конце строки
-        stripped = command.strip()
-        # Проверяем, есть ли после команды что-то кроме пробелов
-        # Используем регулярное выражение для разделения команды и аргументов
-        match = re.match(r'^\S+\s+\S+', stripped)
-        return bool(match)
-
     def __call__(self, message: VkMessage) -> bool:
         try:
-            command = json.loads(message.payload)['command']
+            command = message.payload['command']
         except AttributeError:
             command = message.text.lower().replace("/","")
-        if not self.has_arguments(command):
-            return command == f'{self.command.replace("/","")}'
-        else:
-            return False
-
-class CommandArgs(Filter):
-    def __init__(self, command: str):
-        self.command = command.lower()
-
-    def has_arguments(self, command):
-        # Удаляем все пробелы и табы в начале и конце строки
-        stripped = command.strip()
-        # Проверяем, есть ли после команды что-то кроме пробелов
-        # Используем регулярное выражение для разделения команды и аргументов
-        match = re.match(r'^\S+\s+\S+', stripped)
-        return bool(match)
-
-    def __call__(self, message: VkMessage) -> bool:
-        command = message.text.lower()
-        if self.has_arguments(command):
-            return self.command.replace("/","") == command.replace("/","").split()[0]
-        else:
-            return False
+        return command == f'{self.command.replace("/","")}'
 
 class State(Filter):
     def __init__(self, state: str):
         self.state = state
 
     def __call__(self, message: VkMessage) -> bool:
+        
         if self.state == "*":
             return True
+        if message.state == None and self.state == ".":
+            return True
+
         return message.state == self.state
 
 class And(Filter):
@@ -95,8 +69,21 @@ class Or(Filter):
     def __init__(self, *filters: Filter):
         self.filters = filters
 
-    def __call__(self, message: VkMessage) -> bool:
+    def __call__(self, event: Union['VkMessage', 'wall_post_new']) -> bool:
+        if isinstance(event, VkMessage):
+            return self.check_message(event)
+        elif isinstance(event, wall_post_new):
+            return self.check_wall_post(event)
+        else:
+            raise TypeError(f"Unsupported event type: {type(event)}")
+
+    def check_message(self, message: 'VkMessage') -> bool:
+        """Проверяет фильтры для VkMessage."""
         return any(f(message) for f in self.filters)
+
+    def check_wall_post(self, post: 'wall_post_new') -> bool:
+        """Проверяет фильтры для wall_post_new."""
+        return any(f(post) for f in self.filters)
 
 class IsAdmin(Filter):
     def __call__(self, message: VkMessage) -> bool:
@@ -108,7 +95,7 @@ class StartsWith(Filter):
 
     def __call__(self, message: VkMessage):
         try:
-            payload = json.loads(message.payload)
+            payload = message.payload
             return payload['command'].lower().startswith(self.text)
         except:
             text = message.text

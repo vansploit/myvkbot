@@ -1,5 +1,6 @@
 import os
 import importlib
+import inspect
 import logging
 import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
@@ -7,9 +8,13 @@ from typing import List
 from .router import Router
 from .fsm import FSM
 from .message import VkMessage
+from utils.events import dict_to_obj
+from db import UserDatabase
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+db = UserDatabase()
 
 class VkBotDispatcher:
     def __init__(self, group_id: int, token: str):
@@ -18,6 +23,7 @@ class VkBotDispatcher:
         self.longpoll = VkBotLongPoll(self.vk_session, group_id=group_id)
         self.routers: List[Router] = []
         self.fsm = FSM()
+        self.db = db
 
     def include_routers_from_folder(self, directory):
     
@@ -41,30 +47,44 @@ class VkBotDispatcher:
         self.routers.append(router)
 
     async def process_event(self, event) -> None:
-        if event.type != VkBotEventType.MESSAGE_NEW:
-            return
 
-        msg = event.message
-        vk_message = VkMessage(self.vk, msg, self.fsm)
+        if event.type == "wall_post_new":
+            wall = dict_to_obj(event)
+            for router in self.routers:
+                for handler_data in router.handlers:
+                    if all(f())
 
-        for router in self.routers:
-            for handler_data in router.handlers:
-                #try:
-                if all(f(vk_message) for f in handler_data["filters"]):
-                    await handler_data["handler"](event, vk_message)
-                    return
-                #except Exception as e:
-                    #logger.error(f"Error in handler: {e}")
-        try:
-            logger.warning(f"Нет хендлера для: TEXT: {vk_message.text} CMD: {vk_message.payload}")
-        except:
-            logger.warning(f"Нет хендлера для: TEXT: {vk_message.text}")
+        elif event.type == VkBotEventType.MESSAGE_NEW:
+            
+            msg = event.message
+            vk_message = VkMessage(self.vk, msg, self.fsm, self.db)
+
+            for router in self.routers:
+                for handler_data in router.handlers:
+                    #try:
+                    if all(f(vk_message) for f in handler_data["filters"]):
+                        sig = inspect.signature(handler_data["handler"])
+                        params = sig.parameters
+                        if len(params) == 2:
+                            await handler_data["handler"](event, vk_message)
+                        elif len(params) == 3:
+                            await handler_data["handler"](event, vk_message, self.db)
+                        else:
+                            print(f"Ошибка в параметрах функции {handler_data["handler"]}")
+                        return
+                    #except Exception as e:
+                        #logger.error(f"Error in handler: {e}")
+            try:
+                logger.warning(f"Нет хендлера для: TEXT: {vk_message.text} CMD: {vk_message.payload}")
+            except:
+                logger.warning(f"Нет хендлера для: TEXT: {vk_message.text}")
 
     async def start_polling(self) -> None:
         logger.info("Bot started polling...")
         while True:
             #try:
             for event in self.longpoll.listen():
+
                 await self.process_event(event)
             #except Exception as e:
                 #logger.error(f"Error in polling: {e}")

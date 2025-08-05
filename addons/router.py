@@ -25,9 +25,11 @@ class Router:
             if commands:
                 from .filters import Or, Command
                 filter_list.append(Or(*[Command(cmd) for cmd in commands]))
+            from .filters import State
             if state:
-                from .filters import State
                 filter_list.append(State(state))
+            else:
+                filter_list.append(State("."))
             for key, value in filters.items():
                 if hasattr(self, key):
                     filter_list.append(getattr(self, key)(value))
@@ -38,9 +40,23 @@ class Router:
     def message(self, *filters: Filter, state: Optional[str] = None) -> Callable:
         def decorator(handler: Callable) -> Callable:
             filter_list = list(filters)
+            from .filters import State
             if state:
-                from .filters import State
                 filter_list.append(State(state))
+            else:
+                filter_list.append(State("."))
+            self._register_handler(filter_list, handler)
+            return handler
+        return decorator
+
+    def wall(self, *filters: Filter, state: Optional[str] = None) -> Callable:
+        def decorator(handler: Callable) -> Callable:
+            filter_list = list(filters)
+            from .filters import State
+            if state:
+                filter_list.append(State(state))
+            else:
+                filter_list.append(State("."))
             self._register_handler(filter_list, handler)
             return handler
         return decorator
